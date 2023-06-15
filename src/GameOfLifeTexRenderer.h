@@ -16,6 +16,16 @@ struct FStructOnlyBools : public FTableRowBase
 		bool IsTrue;
 };
 
+USTRUCT(BlueprintType, Category = "GameOfLife")
+struct FGameOfLifePatterns : public FTableRowBase
+{
+	GENERATED_BODY()
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (RequiredAssetDataTags = "RowStructure=StructOnlyBools"))
+	UDataTable* PatternData;
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	FIntPoint PatternSize = FIntPoint(3,3);
+};
+
 
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
@@ -42,6 +52,9 @@ public:
 	//游戏图表。
 	UPROPERTY(EditAnywhere, Category = "GameOfLife", meta = (RequiredAssetDataTags = "RowStructure=StructOnlyBools"))
 		UDataTable* GameInitData;
+	//用于绘制的pattern。
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameOfLife")
+		TArray<FGameOfLifePatterns> PatternsData;
 
 	//模拟更新1 tick。
 	UFUNCTION(BlueprintCallable, Category = "GameOfLife")
@@ -51,7 +64,7 @@ public:
 		bool DrawDotOnCanvas(FVector2D Coord);
 	//在画布上绘制pattern（取或）
 	UFUNCTION(BlueprintCallable, Category = "GameOfLife")
-		bool DrawPatternOnCanvas(FVector2D Coord, const TArray<bool> Pattern, int32 sizeX, int32 sizeY);
+		bool DrawPatternOnCanvas(FVector2D Coord);
 
 	
 
@@ -62,7 +75,9 @@ private:
 	FTimerHandle DuplicateAvoidTimer;
 	int32 LastDrawIndex = 0;
 	TArray<TArray<bool>> HistoryTiles;
+	TArray<TArray<bool>> Patterns;
 	static int32 IntPow(int32 x, uint8 p);
+	void GetPatternsFromTable(TArray<bool>& PatternToWrite, const UDataTable* TableToRead) const;
 
 protected:
 	// Called when the game starts

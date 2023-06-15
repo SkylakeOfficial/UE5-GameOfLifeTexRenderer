@@ -33,8 +33,18 @@ void UGameOfLifeTexRenderer::BeginPlay()
 				const FStructOnlyBools* TmpStruct = GameInitData->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
 				GameTiles[Index] = TmpStruct->IsTrue;
 			}
-
 			else break;
+		}
+
+	}
+
+	if (!PatternsData.IsEmpty())
+	{
+		for (int32 i = 0; i != PatternsData.Num(); ++i)
+		{
+			TArray<bool> Pattern;
+			GetPatternsFromTable(Pattern, PatternsData[i].PatternData);
+			Patterns.Emplace(Pattern);
 		}
 	}
 
@@ -55,7 +65,7 @@ void UGameOfLifeTexRenderer::TickComponent(float DeltaTime, ELevelTick TickType,
 }
 
 
-void UGameOfLifeTexRenderer::UpdateGameOfLife()//����������Ϸ
+void UGameOfLifeTexRenderer::UpdateGameOfLife()
 {
 	//先将GameTiles写入历史记录
 	if (HistoryTiles.Num()>0)
@@ -141,7 +151,7 @@ bool UGameOfLifeTexRenderer::DrawDotOnCanvas(FVector2D Coord)//�ڻ����
 	return true;
 }
 
-bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord, const TArray<bool> Pattern, int32 sizeX, int32 sizeY)
+bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord)
 {
 	//处理越界UV
 	UKismetMathLibrary::FMod(Coord.X, 1, Coord.X);
@@ -157,25 +167,37 @@ bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord, const TArray<b
 
 	GetWorld()->GetTimerManager().SetTimer(DuplicateAvoidTimer, 0.1f, false);
 
-	if (Pattern.Num()<sizeX*sizeY)
+	TArray<bool> Pattern = { false, true, false, false, true, true, true, false, true};//Default Glider
+	FIntPoint Size = FIntPoint(3, 3);//Default Glider
+
+	if(!PatternsData.IsEmpty())
+	{
+		const int32 RandIndex = UKismetMathLibrary::RandomIntegerInRange(0, PatternsData.Num() - 1);
+		Pattern = Patterns[RandIndex];
+		Size = PatternsData[RandIndex].PatternSize;
+
+	}
+	
+
+	if (Pattern.Num()<Size.X*Size.Y)
 	{
 		return false;
 	}
 
-	for (int32 i = 0; i<sizeX; ++i)
+	for (int32 i = 0; i<Size.Y; ++i)
 	{
-		int32 CoordX = i - sizeX / 2 + TargetIndex % GameWidth;
-		if(CoordX >= 0 && CoordX <= GameWidth)
+		if(const int32 CoordY =i - Size.Y / 2 + TargetIndex / GameWidth; CoordY + 1 >= 0 && CoordY <= GameHeight)
 		{
-			for (int32 j = 0; j<sizeY; ++j)
+			for (int32 j = 0; j<Size.X; ++j)
 			{
-				int32 CoordY = j - sizeY / 2 + TargetIndex / GameWidth;
-				if (CoordY + 1 >= 0 && CoordY <= GameHeight)
+				if (const int32 CoordX =j - Size.X / 2 + TargetIndex % GameWidth; CoordX >= 0 && CoordX <= GameWidth)
 				{
 					int32 FinalIndex = CoordY * GameWidth + CoordX;
 					if(GameTiles.IsValidIndex(FinalIndex))
 					{
-						GameTiles[FinalIndex] = GameTiles[FinalIndex] || Pattern[i * sizeX + j];
+						//int32 PatternIndex = UKismetMathLibrary::Clamp(i * Size.X + j,0,Size.X*Size.Y-1);
+						int32 PatternIndex = i * Size.X + j;
+						GameTiles[FinalIndex] = GameTiles[FinalIndex] || Pattern[PatternIndex];
 					}
 				}
 			}
@@ -269,5 +291,21 @@ int32 UGameOfLifeTexRenderer::IntPow(int32 x, uint8 p)
 	int32 tmp = IntPow(x, p / 2);
 	if (p % 2 == 0) return tmp * tmp;
 	else return x * tmp * tmp;
+}
+
+void UGameOfLifeTexRenderer::GetPatternsFromTable(TArray<bool> & PatternToWrite, const UDataTable* TableToRead) const
+{
+	static const FString ContextString(TEXT("GridData"));
+	TArray<FName> RowNames = TableToRead->GetRowNames();
+	for (int32 Index = 0; Index != GameTiles.Num(); ++Index)
+	{
+		if (RowNames.IsValidIndex(Index)) {
+			const FStructOnlyBools* TmpStruct = TableToRead->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
+			PatternToWrite.Emplace(TmpStruct->IsTrue);
+		}
+		else break;
+	}
+
+
 }
 
