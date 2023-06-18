@@ -5,6 +5,7 @@
 #include "RenderingThread.h"
 #include "RHICommandList.h"
 
+#define INDEX_FROM_X_Y(X,Y) (GameWidth*Y+X)
 
 // Sets default values for this component's properties
 UGameOfLifeTexRenderer::UGameOfLifeTexRenderer()
@@ -84,36 +85,81 @@ void UGameOfLifeTexRenderer::UpdateGameOfLife()
 		
 	}
 	//再迭代GameTiles
-	TArray<bool> TmpTiles = GameTiles;
+	TArray<bool> TmpTiles;
+	TmpTiles.Init(false, GameTiles.Num());
+	int32 X = -1;
+	int32 Y = -1;
 	for (int32 Index = 0; Index != GameTiles.Num(); ++Index)
 	{
+		X = (X + 1) % GameWidth;
+		if (X == 0) Y++;
+
 		int32 LivingCellsCount = 0;
 
-		int32 IndexToFind = Index - 1 - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
-		IndexToFind = Index - 1;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
-		IndexToFind = Index - 1 + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
+		int32 tY = Y;
+		int32 tX = X;
+		int32 IndexToFind;
+
+
 		IndexToFind = Index - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↑
+		else if (tY = ((Y + GameHeight - 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)]) { LivingCellsCount++; }
+
 		IndexToFind = Index + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
-		IndexToFind = Index + 1 - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↓
+		else if (tY = ((Y + GameHeight + 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)]) { LivingCellsCount++; }
+
+		IndexToFind = Index - 1;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//←
+		else if (tX = (X + GameWidth - 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)]) { LivingCellsCount++; }
+
 		IndexToFind = Index + 1;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
-		IndexToFind = Index + 1 + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }
-		
-		//规则S23
-		if (GameTiles[Index]) {
-			if (LivingCellsCount != 2 && LivingCellsCount != 3) {
-				TmpTiles[Index] = false;
-			}
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//→
+		else if (tX = (X + GameWidth + 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)]) { LivingCellsCount++; }
+		if (LivingCellsCount > 3) { continue; }//S23
+
+		IndexToFind = Index - 1 - GameWidth;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↑←
+		else {
+			tX = (X + GameWidth - 1) % GameWidth;
+			tY = ((Y + GameHeight - 1) % GameHeight);
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; } 
 		}
-		//规则B3
-		else if (LivingCellsCount == 3) {
+		if (LivingCellsCount > 3) { continue; }//S23
+
+		IndexToFind = Index + 1 - GameWidth;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } } //↑→
+		else {
+			tX = (X + GameWidth + 1) % GameWidth;
+			tY = ((Y + GameHeight - 1) % GameHeight);
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; }
+		}
+		if ((!GameTiles[Index])&&LivingCellsCount < 1) { continue; }//B3
+		if (LivingCellsCount > 3) { continue; }//S23
+
+		IndexToFind = Index - 1 + GameWidth;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↓←
+		else {
+			tX = (X + GameWidth - 1) % GameWidth;
+			tY = ((Y + GameHeight + 1) % GameHeight);
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; } 
+		}
+		if (LivingCellsCount < (GameTiles[Index]? 1 : 2)) { continue; }//B3S2
+		if (LivingCellsCount > 3) { continue; }//S23
+
+		IndexToFind = Index + 1 + GameWidth;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } } //↓→
+		else {
+			tX = (X + GameWidth + 1) % GameWidth;
+			tY = ((Y + GameHeight + 1) % GameHeight);
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; }
+		}
+
+		//B3S23
+		if (LivingCellsCount == 3) {
+			TmpTiles[Index] = true;
+		}
+		else if (GameTiles[Index]&&LivingCellsCount == 2) {
 			TmpTiles[Index] = true;
 		}
 	}
@@ -123,7 +169,7 @@ void UGameOfLifeTexRenderer::UpdateGameOfLife()
 
 }
 
-bool UGameOfLifeTexRenderer::DrawDotOnCanvas(FVector2D Coord)//�ڻ����ϻ���
+bool UGameOfLifeTexRenderer::DrawDotOnCanvas(FVector2D Coord)
 {
 	//处理越界UV
 	UKismetMathLibrary::FMod(Coord.X, 1, Coord.X);
