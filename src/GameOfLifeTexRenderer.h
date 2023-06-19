@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
 #include "Engine/DataTable.h"
+#include "Containers/BitArray.h"
 #include "GameOfLifeTexRenderer.generated.h"
 
 
@@ -37,7 +38,7 @@ public:
 
 	// Sets default values for this component's properties
 	UGameOfLifeTexRenderer();
-	//记录的历史步数
+	//记录的历史步数(0~63)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameOfLife")
 		int32 HistorySteps = 0;
 	//模拟宽度
@@ -71,13 +72,13 @@ public:
 private:
 
 	void ReDrawCanvas();
-	TArray<bool> GameTiles;
+	TArray<uint8> GameTiles;
 	FTimerHandle DuplicateAvoidTimer;
+	uint8 HistoryFalloff = 255;
+	uint8 HistoryFalloff2x = 255;
 	int32 LastDrawIndex = 0;
-	TArray<TArray<bool>> HistoryTiles;
-	TArray<TArray<bool>> Patterns;
-	static int32 IntPow(int32 x, uint8 p);
-	void GetPatternsFromTable(TArray<bool>& PatternToWrite, const UDataTable* TableToRead) const;
+	TArray<TBitArray<>> Patterns;
+	void GetPatternsFromTable(TBitArray<>& PatternToWrite, const UDataTable* TableToRead) const;
 
 protected:
 	// Called when the game starts

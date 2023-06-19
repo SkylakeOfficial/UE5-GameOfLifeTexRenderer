@@ -19,11 +19,15 @@ void UGameOfLifeTexRenderer::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//历史步数别太多了
-	HistorySteps = UKismetMathLibrary::Clamp(HistorySteps, 0, 7);
+	//历史步数限制
+	HistorySteps = UKismetMathLibrary::Clamp(HistorySteps, 0, 63);
+	if (HistorySteps != 0)
+	{
+		HistoryFalloff = 256 / (1 + HistorySteps) - ((256 % (HistorySteps+1) == 0) ? 1 : 0);
+		HistoryFalloff2x = HistoryFalloff * 2;
+	}
 
-	GameTiles.Init(false, GameWidth*GameHeight);
-	HistoryTiles.Init(GameTiles, HistorySteps);
+	GameTiles.Init(0, GameWidth*GameHeight);
 
 	if (GameInitData) {
 		static const FString ContextString(TEXT("GridData"));
@@ -32,7 +36,7 @@ void UGameOfLifeTexRenderer::BeginPlay()
 		{
 			if (RowNames.IsValidIndex(Index)) {
 				const FStructOnlyBools* TmpStruct = GameInitData->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
-				GameTiles[Index] = TmpStruct->IsTrue;
+				GameTiles[Index] = TmpStruct->IsTrue? 255 : 0;
 			}
 			else break;
 		}
@@ -43,7 +47,7 @@ void UGameOfLifeTexRenderer::BeginPlay()
 	{
 		for (int32 i = 0; i != PatternsData.Num(); ++i)
 		{
-			TArray<bool> Pattern;
+			TBitArray<> Pattern;
 			GetPatternsFromTable(Pattern, PatternsData[i].PatternData);
 			Patterns.Emplace(Pattern);
 		}
@@ -68,24 +72,8 @@ void UGameOfLifeTexRenderer::TickComponent(float DeltaTime, ELevelTick TickType,
 
 void UGameOfLifeTexRenderer::UpdateGameOfLife()
 {
-	//先将GameTiles写入历史记录
-	if (HistoryTiles.Num()>0)
-	{
-		for (int32 i = HistoryTiles.Num()-1; i>=0;--i)
-		{
-			if (i>0)
-			{
-				HistoryTiles[i] = HistoryTiles[i - 1];
-			}
-			else
-			{
-				HistoryTiles[0] = GameTiles;
-			}
-		}
-		
-	}
-	//再迭代GameTiles
-	TArray<bool> TmpTiles;
+	TBitArray<> TmpTiles;
+
 	TmpTiles.Init(false, GameTiles.Num());
 	int32 X = -1;
 	int32 Y = -1;
@@ -98,72 +86,92 @@ void UGameOfLifeTexRenderer::UpdateGameOfLife()
 
 		int32 tY = Y;
 		int32 tX = X;
-		int32 IndexToFind;
 
 
-		IndexToFind = Index - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↑
-		else if (tY = ((Y + GameHeight - 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)]) { LivingCellsCount++; }
+		int32 IndexToFind = Index - GameWidth;
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//↑
+		else if (tY = ((Y + GameHeight - 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)] == 255) { LivingCellsCount++; }
 
 		IndexToFind = Index + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↓
-		else if (tY = ((Y + GameHeight + 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)]) { LivingCellsCount++; }
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//↓
+		else if (tY = ((Y + GameHeight + 1) % GameHeight); GameTiles[INDEX_FROM_X_Y(X, tY)] == 255) { LivingCellsCount++; }
 
 		IndexToFind = Index - 1;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//←
-		else if (tX = (X + GameWidth - 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)]) { LivingCellsCount++; }
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//←
+		else if (tX = (X + GameWidth - 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)] == 255) { LivingCellsCount++; }
 
 		IndexToFind = Index + 1;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//→
-		else if (tX = (X + GameWidth + 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)]) { LivingCellsCount++; }
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//→
+		else if (tX = (X + GameWidth + 1) % GameWidth; GameTiles[INDEX_FROM_X_Y(tX, Y)] == 255) { LivingCellsCount++; }
 		if (LivingCellsCount > 3) { continue; }//S23
 
 		IndexToFind = Index - 1 - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↑←
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//↑←
 		else {
 			tX = (X + GameWidth - 1) % GameWidth;
 			tY = ((Y + GameHeight - 1) % GameHeight);
-			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; } 
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)] == 255) { LivingCellsCount++; }
 		}
 		if (LivingCellsCount > 3) { continue; }//S23
 
 		IndexToFind = Index + 1 - GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } } //↑→
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } } //↑→
 		else {
 			tX = (X + GameWidth + 1) % GameWidth;
 			tY = ((Y + GameHeight - 1) % GameHeight);
-			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; }
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)] == 255) { LivingCellsCount++; }
 		}
-		if ((!GameTiles[Index])&&LivingCellsCount < 1) { continue; }//B3
+		if ((GameTiles[Index] != 255)&&LivingCellsCount < 1) { continue; }//B3
 		if (LivingCellsCount > 3) { continue; }//S23
 
 		IndexToFind = Index - 1 + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } }//↓←
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } }//↓←
 		else {
 			tX = (X + GameWidth - 1) % GameWidth;
 			tY = ((Y + GameHeight + 1) % GameHeight);
-			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; } 
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)] == 255) { LivingCellsCount++; }
 		}
-		if (LivingCellsCount < (GameTiles[Index]? 1 : 2)) { continue; }//B3S2
+		if (LivingCellsCount < (GameTiles[Index] == 255 ? 1 : 2)) { continue; }//B3S2
 		if (LivingCellsCount > 3) { continue; }//S23
 
 		IndexToFind = Index + 1 + GameWidth;
-		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind]) { LivingCellsCount++; } } //↓→
+		if (GameTiles.IsValidIndex(IndexToFind)) { if (GameTiles[IndexToFind] == 255) { LivingCellsCount++; } } //↓→
 		else {
 			tX = (X + GameWidth + 1) % GameWidth;
 			tY = ((Y + GameHeight + 1) % GameHeight);
-			if (GameTiles[INDEX_FROM_X_Y(tX, tY)]) { LivingCellsCount++; }
+			if (GameTiles[INDEX_FROM_X_Y(tX, tY)] == 255) { LivingCellsCount++; }
 		}
 
 		//B3S23
 		if (LivingCellsCount == 3) {
 			TmpTiles[Index] = true;
 		}
-		else if (GameTiles[Index]&&LivingCellsCount == 2) {
+		else if (GameTiles[Index]== 255 && LivingCellsCount == 2) {
 			TmpTiles[Index] = true;
 		}
 	}
-	GameTiles = TmpTiles;
+	
+	for (int32 i = 0; i != TmpTiles.Num(); ++i)
+	{
+		if (TmpTiles[i])
+		{
+			GameTiles[i] = 255;
+		}
+		else
+		{
+			if (const uint8 Current = GameTiles[i]; Current != 0)
+			{
+				if (Current < HistoryFalloff2x)
+				{
+					GameTiles[i] = 0;
+				}
+				else
+				{
+					GameTiles[i] = Current - HistoryFalloff;
+				}
+			}
+		}
+	}
 	ReDrawCanvas();
 
 
@@ -189,10 +197,10 @@ bool UGameOfLifeTexRenderer::DrawDotOnCanvas(FVector2D Coord)
 	LastDrawIndex = TargetIndex;
 	GetWorld()->GetTimerManager().SetTimer(DuplicateAvoidTimer, 0.1f, false);
 
-	if (GameTiles[TargetIndex]) {
-		GameTiles[TargetIndex] = false;
+	if (GameTiles[TargetIndex] == 255) {
+		GameTiles[TargetIndex] = 255 - HistoryFalloff;
 	}
-	else GameTiles[TargetIndex] = true;
+	else GameTiles[TargetIndex] = 255;
 	ReDrawCanvas();
 	return true;
 }
@@ -213,7 +221,9 @@ bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord)
 
 	GetWorld()->GetTimerManager().SetTimer(DuplicateAvoidTimer, 0.1f, false);
 
-	TArray<bool> Pattern = { false, true, false, false, true, true, true, false, true};//Default Glider
+	TBitArray<> Pattern = TBitArray(true, 9);
+	Pattern[0] = false;Pattern[2] = false;Pattern[3] = false;Pattern[7] = false;//Default Glider
+
 	FIntPoint Size = FIntPoint(3, 3);//Default Glider
 
 	if(!PatternsData.IsEmpty())
@@ -243,7 +253,7 @@ bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord)
 					{
 						//int32 PatternIndex = UKismetMathLibrary::Clamp(i * Size.X + j,0,Size.X*Size.Y-1);
 						int32 PatternIndex = i * Size.X + j;
-						GameTiles[FinalIndex] = GameTiles[FinalIndex] || Pattern[PatternIndex];
+						if(GameTiles[FinalIndex] == 255 || Pattern[PatternIndex]) GameTiles[FinalIndex] = 255;
 					}
 				}
 			}
@@ -255,34 +265,9 @@ bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord)
 
 void UGameOfLifeTexRenderer::ReDrawCanvas()
 {
-	//ColorArray Gen
-	TArray<uint8> ColorArray;
-
-	for (int32 Index = 0; Index != GameTiles.Num(); ++Index)
-	{
-		uint8 tmpColor = 0;
-
-		if (GameTiles[Index])
-		{
-			tmpColor = 255;
-		}
-		else if (HistoryTiles.Num()>0)
-		{
-			for (int32 i = 0; i!= HistoryTiles.Num();++i)
-			{
-				if (HistoryTiles[i][Index])
-				{
-					tmpColor = 255 / (IntPow(2, i+1));
-					break;
-				}
-			}
-		}
-		ColorArray.Emplace(tmpColor);
-	}
-
-	bool bFreeData = false;
 	UTexture2D* Texture = GameTexture;
 	if (GameTexture->GetResource()) {
+		bool bFreeData = false;
 		struct FUpdateTextureRegionsData {
 			FTexture2DResource* Texture2DResource;
 			int32 MipIndex;
@@ -299,7 +284,7 @@ void UGameOfLifeTexRenderer::ReDrawCanvas()
 		RegionData->Regions = new FUpdateTextureRegion2D(0, 0, 0, 0, GameWidth, GameHeight);
 		RegionData->SrcPitch = GameWidth;
 		RegionData->SrcBpp = 1;
-		RegionData->SrcData = ColorArray.GetData();
+		RegionData->SrcData = GameTiles.GetData();
 
 		ENQUEUE_RENDER_COMMAND(UpdateTextureRegionsData)(
 			[RegionData, bFreeData, Texture](FRHICommandListImmediate& RHICmdList)
@@ -329,17 +314,7 @@ void UGameOfLifeTexRenderer::ReDrawCanvas()
 	}
 }
 
-int32 UGameOfLifeTexRenderer::IntPow(int32 x, uint8 p)
-{
-	if (p == 0) return 1;
-	if (p == 1) return x;
-
-	int32 tmp = IntPow(x, p / 2);
-	if (p % 2 == 0) return tmp * tmp;
-	else return x * tmp * tmp;
-}
-
-void UGameOfLifeTexRenderer::GetPatternsFromTable(TArray<bool> & PatternToWrite, const UDataTable* TableToRead) const
+void UGameOfLifeTexRenderer::GetPatternsFromTable(TBitArray<> & PatternToWrite, const UDataTable* TableToRead) const
 {
 	static const FString ContextString(TEXT("GridData"));
 	TArray<FName> RowNames = TableToRead->GetRowNames();
@@ -347,11 +322,8 @@ void UGameOfLifeTexRenderer::GetPatternsFromTable(TArray<bool> & PatternToWrite,
 	{
 		if (RowNames.IsValidIndex(Index)) {
 			const FStructOnlyBools* TmpStruct = TableToRead->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
-			PatternToWrite.Emplace(TmpStruct->IsTrue);
+			PatternToWrite.Add(TmpStruct->IsTrue);
 		}
 		else break;
 	}
-
-
 }
-
