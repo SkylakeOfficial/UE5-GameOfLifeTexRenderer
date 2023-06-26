@@ -1,3 +1,5 @@
+-- 脚本由kdxcxs 友情提供 https://github.com/kdxcxs
+
 local g = golly()
 
 local gx, gy, wd, ht = table.unpack(g.getrect())
