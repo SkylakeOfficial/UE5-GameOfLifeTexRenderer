@@ -1,25 +1,21 @@
 // Skylake Game Studio ArknightsFP
 
-#include "GameOfLifeTexRenderer.h"
+#include "ArknightsFP/GameOfLife/GameOfLifeTexRenderer.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "RenderingThread.h"
 #include "RHICommandList.h"
 
 #define INDEX_FROM_X_Y(X,Y) (GameWidth*Y+X)
 
-// Sets default values for this component's properties
 UGameOfLifeTexRenderer::UGameOfLifeTexRenderer()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-	// ...
 }
 
-// Called when the game starts
 void UGameOfLifeTexRenderer::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//历史步数限制
 	HistorySteps = UKismetMathLibrary::Clamp(HistorySteps, 0, 63);
 	if (HistorySteps != 0)
 	{
@@ -27,29 +23,39 @@ void UGameOfLifeTexRenderer::BeginPlay()
 		HistoryFalloff2x = HistoryFalloff * 2;
 	}
 
-	GameTiles.Init(0, GameWidth*GameHeight);
-
-	if (GameInitData) {
-		static const FString ContextString(TEXT("GridData"));
-		TArray<FName> RowNames = GameInitData->GetRowNames();
-		for (int32 Index = 0; Index != GameTiles.Num(); ++Index)
+	// Init GOL Canvas
+	if (GameInitCanvas) {
+		GameWidth = GameInitCanvas->PatternSize.X;
+		GameHeight = GameInitCanvas->PatternSize.Y;
+		for (uint8 Num : GameInitCanvas->Pattern)
 		{
-			if (RowNames.IsValidIndex(Index)) {
-				const FStructOnlyBools* TmpStruct = GameInitData->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
-				GameTiles[Index] = TmpStruct->IsTrue? 255 : 0;
+			TArray<uint8> NumArray;
+			if (Num > 240)
+			{
+				NumArray.Init(255, Num - 240);
+				GameTiles.Append(NumArray);
 			}
-			else break;
+			else
+			{
+				NumArray.Init(0, Num);
+				GameTiles.Append(NumArray);
+			}
 		}
-
+		GameTiles.SetNum(GameWidth * GameHeight);
+	}
+	else
+	{
+		GameTiles.Init(0, GameWidth * GameHeight);
 	}
 
-	if (!PatternsData.IsEmpty())
+	// Init GOL brush patterns
+	if (!BrushPatterns.IsEmpty())
 	{
-		for (int32 i = 0; i != PatternsData.Num(); ++i)
+		for (int32 i = 0; i != BrushPatterns.Num(); ++i)
 		{
-			TBitArray<> Pattern;
-			GetPatternsFromTable(Pattern, PatternsData[i].PatternData);
-			Patterns.Emplace(Pattern);
+			FPatternWithSize Pattern;
+			GetPatternsFromAsset(Pattern, BrushPatterns[i]);
+			BrushPatternsData.Emplace(Pattern);
 		}
 	}
 
@@ -65,8 +71,6 @@ void UGameOfLifeTexRenderer::BeginPlay()
 void UGameOfLifeTexRenderer::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-	// ...
 }
 
 
@@ -221,19 +225,15 @@ bool UGameOfLifeTexRenderer::DrawPatternOnCanvas(FVector2D Coord)
 
 	GetWorld()->GetTimerManager().SetTimer(DuplicateAvoidTimer, 0.1f, false);
 
-	TBitArray<> Pattern = TBitArray(true, 9);
-	Pattern[0] = false;Pattern[2] = false;Pattern[3] = false;Pattern[7] = false;//Default Glider
-
+	TArray<bool> Pattern = { false,true,false,false,true,true,true,false,true,true };//Default Glider
 	FIntPoint Size = FIntPoint(3, 3);//Default Glider
 
-	if(!PatternsData.IsEmpty())
+	if(!BrushPatternsData.IsEmpty())
 	{
-		const int32 RandIndex = UKismetMathLibrary::RandomIntegerInRange(0, PatternsData.Num() - 1);
-		Pattern = Patterns[RandIndex];
-		Size = PatternsData[RandIndex].PatternSize;
-
+		const int32 RandIndex = UKismetMathLibrary::RandomIntegerInRange(0, BrushPatternsData.Num() - 1);
+		Pattern = BrushPatternsData[RandIndex].Pattern;
+		Size = BrushPatternsData[RandIndex].Size;
 	}
-	
 
 	if (Pattern.Num()<Size.X*Size.Y)
 	{
@@ -314,16 +314,26 @@ void UGameOfLifeTexRenderer::ReDrawCanvas()
 	}
 }
 
-void UGameOfLifeTexRenderer::GetPatternsFromTable(TBitArray<> & PatternToWrite, const UDataTable* TableToRead) const
+void UGameOfLifeTexRenderer::GetPatternsFromAsset(FPatternWithSize& PatternToWrite, const UGameOfLifePattern* PatternToRead)
 {
-	static const FString ContextString(TEXT("GridData"));
-	TArray<FName> RowNames = TableToRead->GetRowNames();
-	for (int32 Index = 0; Index != GameTiles.Num(); ++Index)
-	{
-		if (RowNames.IsValidIndex(Index)) {
-			const FStructOnlyBools* TmpStruct = TableToRead->FindRow<FStructOnlyBools>(RowNames[Index], ContextString);
-			PatternToWrite.Add(TmpStruct->IsTrue);
+
+	if (PatternToRead) {
+		for (uint8 Num : PatternToRead->Pattern)
+		{
+			TArray<bool> NumArray;
+			if (Num > 240)
+			{
+				NumArray.Init(true, Num - 240);
+				PatternToWrite.Pattern.Append(NumArray);
+			}
+			else
+			{
+				NumArray.Init(false, Num);
+				PatternToWrite.Pattern.Append(NumArray);
+			}
 		}
-		else break;
+		PatternToWrite.Size = PatternToRead->PatternSize;
+		PatternToWrite.Pattern.SetNum(PatternToRead->PatternSize.X* PatternToRead->PatternSize.Y);
+
 	}
 }

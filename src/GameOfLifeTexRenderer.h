@@ -4,30 +4,16 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
-#include "Engine/DataTable.h"
-#include "Containers/BitArray.h"
+#include "GameOfLifePattern.h"
 #include "GameOfLifeTexRenderer.generated.h"
 
-
-USTRUCT(BlueprintType)
-struct FStructOnlyBools : public FTableRowBase
+USTRUCT()
+struct FPatternWithSize
 {
 	GENERATED_BODY()
-		UPROPERTY(EditAnywhere, BlueprintReadOnly)
-		bool IsTrue;
+	FIntPoint Size;
+	TArray<bool> Pattern;
 };
-
-USTRUCT(BlueprintType, Category = "GameOfLife")
-struct FGameOfLifePatterns : public FTableRowBase
-{
-	GENERATED_BODY()
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (RequiredAssetDataTags = "RowStructure=StructOnlyBools"))
-	UDataTable* PatternData;
-	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	FIntPoint PatternSize = FIntPoint(3,3);
-};
-
-
 
 UCLASS( ClassGroup=(Custom), meta=(BlueprintSpawnableComponent) )
 class ARKNIGHTSFP_API UGameOfLifeTexRenderer : public UActorComponent
@@ -39,23 +25,23 @@ public:
 	// Sets default values for this component's properties
 	UGameOfLifeTexRenderer();
 	//记录的历史步数(0~63)
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameOfLife")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameOfLife", meta = (ClampMin = "0", ClampMax = "63", UIMin = "0", UIMax = "63"))
 		int32 HistorySteps = 0;
-	//模拟宽度
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "GameOfLife")
+	//默认画布为空时的回退模拟宽度
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "GameOfLife", meta = (DisplayName = "FallBackGameWidth",ClampMin = "0", UIMin = "0", UIMax = "1024"))
 		int32 GameWidth = 128;
-	//模拟高度
-	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "GameOfLife")
+	//默认画布为空时的回退模拟高度
+	UPROPERTY(EditAnywhere,BlueprintReadOnly, Category = "GameOfLife",meta =(DisplayName = "FallBackGameHeight", ClampMin = "0", UIMin = "0", UIMax = "1024"))
 		int32 GameHeight = 128;
 	//模拟产生的纹理，用蓝图Get到，赋给材质。
 	UPROPERTY(BlueprintReadOnly, Category = "GameOfLife")
-		UTexture2D* GameTexture;
-	//游戏图表。
-	UPROPERTY(EditAnywhere, Category = "GameOfLife", meta = (RequiredAssetDataTags = "RowStructure=StructOnlyBools"))
-		UDataTable* GameInitData;
-	//用于绘制的pattern。
+		UTexture2D* GameTexture = nullptr;
+	//游戏初始画布Pattern。
+	UPROPERTY(EditAnywhere, Category = "GameOfLife")
+		UGameOfLifePattern* GameInitCanvas = nullptr;
+	//用于绘制的笔刷pattern。
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "GameOfLife")
-		TArray<FGameOfLifePatterns> PatternsData;
+		TArray<UGameOfLifePattern*> BrushPatterns;
 
 	//模拟更新1 tick。
 	UFUNCTION(BlueprintCallable, Category = "GameOfLife")
@@ -77,8 +63,8 @@ private:
 	uint8 HistoryFalloff = 255;
 	uint8 HistoryFalloff2x = 255;
 	int32 LastDrawIndex = 0;
-	TArray<TBitArray<>> Patterns;
-	void GetPatternsFromTable(TBitArray<>& PatternToWrite, const UDataTable* TableToRead) const;
+	TArray<FPatternWithSize> BrushPatternsData;
+	static void GetPatternsFromAsset(FPatternWithSize& PatternToWrite, const UGameOfLifePattern* TableToRead);
 
 protected:
 	// Called when the game starts
